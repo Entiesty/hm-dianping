@@ -7,9 +7,13 @@ import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
+import com.hmdp.utils.RedisDistributedLock;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +28,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private RedisIdWorker redisIdWorker;
     @Resource
     private ApplicationContext applicationContext;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private RedissonClient redissonClient;
 
     @Override
     public Result seckillVoucher(Long voucherId) {
@@ -43,9 +51,38 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
         //*.一人一单
         Long userId = UserHolder.getUser().getId();
-        synchronized (userId.toString().intern()) {
+/*        synchronized (userId.toString().intern()) {
             VoucherOrderServiceImpl proxy = applicationContext.getBean(VoucherOrderServiceImpl.class);
             return proxy.createVoucherOrder(voucherId);
+        }*/
+
+/*        //1.创建锁
+        RedisDistributedLock simpleRedisLock = new RedisDistributedLock(stringRedisTemplate, "order:" + userId);
+
+        //2.使用锁
+        boolean isLockAcquired = simpleRedisLock.tryAcquireLock(1200);
+        if(!isLockAcquired) {
+            return Result.fail("不允许重复下单");
+        }
+
+        try{
+            VoucherOrderServiceImpl proxy = applicationContext.getBean(VoucherOrderServiceImpl.class);
+            return proxy.createVoucherOrder(voucherId);
+        } finally {
+            simpleRedisLock.releaseLock();
+        }*/
+
+        RLock lock = redissonClient.getLock("lock:order:" + userId);
+        boolean isLockAcquire = lock.tryLock();
+        if(!isLockAcquire) {
+            return Result.fail("不允许重复下单");
+        }
+
+        try{
+            VoucherOrderServiceImpl proxy = applicationContext.getBean(VoucherOrderServiceImpl.class);
+            return proxy.createVoucherOrder(voucherId);
+        } finally {
+            lock.unlock();
         }
     }
 
