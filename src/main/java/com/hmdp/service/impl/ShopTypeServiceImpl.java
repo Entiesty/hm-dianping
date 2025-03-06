@@ -7,6 +7,7 @@ import com.hmdp.dto.Result;
 import com.hmdp.entity.ShopType;
 import com.hmdp.mapper.ShopTypeMapper;
 import com.hmdp.service.IShopTypeService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -23,15 +24,15 @@ import static com.hmdp.utils.RedisConstants.*;
  * @since 2021-12-22
  */
 @Service
+@RequiredArgsConstructor
 public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> implements IShopTypeService {
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private final StringRedisTemplate redisTemplate;
 
 
     @Override
     public Result queryTypeList() {
         //1.查询redis中的缓存
-        String shopTypeList = stringRedisTemplate.opsForValue().get(CACHE_SHOP_TYPE_KEY);
+        String shopTypeList = redisTemplate.opsForValue().get(CACHE_SHOP_TYPE_KEY);
         //2.如果缓存命中，则返回结果
         if (StrUtil.isNotBlank(shopTypeList)) {
             List<ShopType> shopTypeList1 = JSON.parseArray(shopTypeList, ShopType.class);
@@ -44,7 +45,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
             return Result.ok("数据不存在！");
         }
         //5.如果数据库存在该数据，则写入redis缓存
-        stringRedisTemplate.opsForValue().set(CACHE_SHOP_TYPE_KEY, JSON.toJSONString(shopTypeList2));
+        redisTemplate.opsForValue().set(CACHE_SHOP_TYPE_KEY, JSON.toJSONString(shopTypeList2));
         //6.返回数据
         return Result.ok(shopTypeList2);
     }

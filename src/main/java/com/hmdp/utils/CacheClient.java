@@ -20,12 +20,12 @@ import static com.hmdp.utils.RedisConstants.LOCK_SHOP_TTL;
 @Component
 @RequiredArgsConstructor
 public class CacheClient {
-    private final StringRedisTemplate stringRedisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
     // 设置缓存值
     public void setValue(String key, Object data, Long expireDuration, TimeUnit unit) {
-        stringRedisTemplate.opsForValue().set(key, JSON.toJSONString(data), expireDuration, unit);
+        redisTemplate.opsForValue().set(key, JSON.toJSONString(data), expireDuration, unit);
     }
 
     // 设置带有逻辑过期的缓存值
@@ -34,14 +34,14 @@ public class CacheClient {
         redisData.setExpireTime(LocalDateTime.now().plusSeconds(unit.toSeconds(expireDuration)));
         redisData.setData(data);
 
-        stringRedisTemplate.opsForValue().set(key, JSON.toJSONString(redisData));
+        redisTemplate.opsForValue().set(key, JSON.toJSONString(redisData));
     }
 
     // 查询缓存，支持缓存穿透
     public <R, ID> R queryWithCachePassThrough(String keyPrefix, ID id, Class<R> type, Function<ID, R> dataFallBack,
                                                Long expireDuration, TimeUnit unit) {
         String key = keyPrefix + id;
-        String json = stringRedisTemplate.opsForValue().get(key);
+        String json = redisTemplate.opsForValue().get(key);
 
         if (StrUtil.isNotBlank(json)) {
             return JSON.parseObject(json, type);
@@ -67,7 +67,7 @@ public class CacheClient {
                                                 Long time, TimeUnit unit) {
         String key = keyPrefix + id;
         String lockKey = key + ":lock";
-        String json = stringRedisTemplate.opsForValue().get(key);
+        String json = redisTemplate.opsForValue().get(key);
 
         // 如果缓存为空，返回 null
         if (StrUtil.isBlank(json)) {
@@ -111,7 +111,7 @@ public class CacheClient {
                 redisData.setData(data);
 
                 // 更新缓存
-                stringRedisTemplate.opsForValue().set(key, JSON.toJSONString(redisData));
+                redisTemplate.opsForValue().set(key, JSON.toJSONString(redisData));
             } else {
                 // 如果数据为空，可以选择设置空缓存，避免缓存穿透
                 this.setValue(key, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
@@ -123,13 +123,13 @@ public class CacheClient {
 
     private boolean tryAcquireLock(String lockKey) {
         // 使用 setIfAbsent 获取锁，并设置锁的过期时间
-        Boolean lockAcquired = stringRedisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", LOCK_SHOP_TTL, TimeUnit.MINUTES);
+        Boolean lockAcquired = redisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", LOCK_SHOP_TTL, TimeUnit.MINUTES);
         return lockAcquired != null && lockAcquired;
     }
 
     private void releaseLock(String lockKey) {
         // 删除锁
-        stringRedisTemplate.delete(lockKey);
+        redisTemplate.delete(lockKey);
     }
 
 

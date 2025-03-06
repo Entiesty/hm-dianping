@@ -12,13 +12,19 @@ import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
+import com.hmdp.utils.UserHolder;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -35,10 +41,10 @@ import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
 
 
     @Override
@@ -56,6 +62,46 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         log.debug("验证码发送成功，验证码为:{}", code);
 
         return Result.ok("验证码发送成功!");
+    }
+
+    @Override
+    public Result sign() {
+        UserDTO user = UserHolder.getUser();
+        LocalDateTime now = LocalDateTime.now();
+
+        String format = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = "sign:" + user.getId() + format;
+
+        int dayOfMonth = now.getDayOfMonth();
+        stringRedisTemplate.opsForValue().setBit(key, dayOfMonth - 1, true);
+
+        return Result.ok();
+    }
+
+    @Override
+    public Result signCount() {
+        UserDTO user = UserHolder.getUser();
+        LocalDateTime now = LocalDateTime.now();
+
+        int today = now.getDayOfMonth();
+        String time = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String signKey = "sign:" + user.getId() + time;
+        List<Long> bitField = stringRedisTemplate.opsForValue()
+                .bitField(signKey, BitFieldSubCommands.create()
+                        .get(BitFieldSubCommands.BitFieldType.unsigned(today))
+                        .valueAt(0));
+
+        if(bitField == null) {
+            return Result.ok(0);
+        }
+        Long num = bitField.get(0);
+        int count = 0;
+        while ((num & 1) != 0) {
+            count++;
+            num >>>= 1;
+        }
+
+        return Result.ok(count);
     }
 
     @Override
